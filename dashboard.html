@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Perfil - Simposio</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        #user-welcome { font-size: 1.5em; font-weight: bold; border-bottom: 2px solid #eee; padding-bottom: 10px; color: #333; }
+        #user-welcome span { font-weight: normal; font-size: 0.8em; color: #555; display: block; }
+        #asistencias-list ul { list-style-type: decimal; padding-left: 20px; }
+        #asistencias-list li { background: #f4f4f4; padding: 12px; margin-bottom: 8px; border-radius: 4px; border: 1px solid #eee; }
+        #asistencias-list li small { color: #666; display: block; margin-top: 4px; }
+        #logout-btn { width: 100%; padding: 12px; font-size: 16px; cursor: pointer; border-radius: 4px; border: none; margin-top: 15px; background-color: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="user-welcome"></div>
+        <hr>
+        
+        <h3>Mis Asistencias Registradas</h3>
+        <div id="asistencias-list">
+            <p>Cargando asistencias...</p>
+        </div>
+
+        <button id="logout-btn">Cerrar Sesión</button>
+    </div>
+
+    <script>
+        // --- ¡¡¡CONFIGURACIÓN IMPORTANTE!!! ---
+        // Pega aquí la MISMA URL de la aplicación web que copiaste en la Fase 2
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxdxPSSkYcLafO_q6xA_lx_485P6YOZKp1_qL55K3duIWjPAv1Os7iyTJvuv5Se7odH0A/exec'; 
+        // -------------------------------------
+
+        const userWelcome = document.getElementById('user-welcome');
+        const asistenciasList = document.getElementById('asistencias-list');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        // Verificamos que el usuario esté logueado
+        const user = JSON.parse(localStorage.getItem('simposioUser'));
+        if (!user || user.rol !== 'asistente') { // Si no es asistente, fuera
+            localStorage.removeItem('simposioUser');
+            window.location.href = 'index.html'; 
+        }
+
+        // Al cargar la página, mostramos los datos y cargamos asistencias
+        document.addEventListener('DOMContentLoaded', () => {
+            userWelcome.innerHTML = `${user.nombre_completo} <span>(${user.usuario})</span>`;
+            cargarAsistencias();
+        });
+
+        // --- Función para Cargar Asistencias ---
+        async function cargarAsistencias() {
+            asistenciasList.innerHTML = '<p>Actualizando...</p>';
+            const url = `${API_URL}?action=getAsistencias&user=${encodeURIComponent(user.usuario)}`;
+            
+            try {
+                const response = await fetch(url, { method: 'GET' });
+                const data = await response.json();
+                
+                if (data.success && data.asistencias.length > 0) {
+                    let html = '<ul>';
+                    data.asistencias.forEach(asistencia => {
+                        let fecha = new Date(asistencia.timestamp).toLocaleString('es-ES', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+                        html += `<li><b>${asistencia.nombre}</b><br><small>Registrado: ${fecha}</small></li>`;
+                    });
+                    html += '</ul>';
+                    asistenciasList.innerHTML = html;
+                } else if (data.success) {
+                    asistenciasList.innerHTML = '<p>Aún no tienes asistencias registradas.</p>';
+                } else {
+                    asistenciasList.innerHTML = `<p style="color:red;">Error al cargar: ${data.message}</p>`;
+                }
+            } catch (error) {
+                asistenciasList.innerHTML = `<p style="color:red;">Error de conexión.</p>`;
+            }
+        }
+
+        // --- Cerrar Sesión ---
+        logoutBtn.addEventListener('click', () => {
+            localStorage.removeItem('simposioUser'); // Borramos al usuario
+            window.location.href = 'index.html'; // Lo mandamos al login
+        });
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Escáner - Simposio</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background-color: #f0f2f5; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        #admin-welcome { font-size: 1.2em; font-weight: bold; }
+        #logout-btn { background-color: #dc3545; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; float: right; font-size: 0.8em; }
+        
+        #selector-ponencia, #scanner-section { margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee; clear: both; }
+        label { font-weight: bold; display: block; margin-bottom: 10px; font-size: 1.1em; }
+        select { width: 100%; padding: 10px; font-size: 16px; border-radius: 4px; border: 1px solid #ccc; background-color: white; }
+        button { width: 100%; padding: 12px; font-size: 16px; cursor: pointer; border-radius: 4px; border: none; margin-top: 15px; }
+        #start-scan-btn { background-color: #28a745; color: white; font-weight: bold; }
+        #stop-scan-btn { background-color: #ffc107; color: black; display: none; }
+
+        #qr-reader { width: 100%; margin-top: 20px; border: 2px solid #ccc; border-radius: 8px; overflow: hidden; }
+        #qr-reader video { width: 100% !important; height: auto !important; }
+
+        /* Estilos para los mensajes de estado */
+        .message-box { 
+            text-align: center; padding: 12px; font-weight: bold; font-size: 1.1em; 
+            border-radius: 4px; margin-top: 10px; display: none; /* Ocultos por defecto */
+        }
+        
+        .msg-success { background-color: #d4edda; color: #155724; }
+        .msg-error { background-color: #f8d7da; color: #721c24; }
+        
+        /* Mensaje especial para MERCH PENDIENTE */
+        .msg-merch-pendiente { 
+            background-color: #fff3cd; color: #856404; font-size: 1.3em;
+            border: 2px solid #ffeeba; animation: pulse 1.5s infinite;
+        }
+        .msg-merch-ok { background-color: #e2e3e5; color: #383d41; }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+            70% { transform: scale(1.02); box-shadow: 0 0 10px 10px rgba(255, 193, 7, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button id="logout-btn">Cerrar Sesión</button>
+        <div id="admin-welcome">Bienvenido, Encargado</div>
+        
+        <div id="selector-ponencia">
+            <label for="ponencia-select">1. Selecciona la ponencia a registrar:</label>
+            <select id="ponencia-select">
+                <option value="">Cargando ponencias...</option>
+            </select>
+            <button id="start-scan-btn">2. Empezar a Escanear</button>
+        </div>
+
+        <div id="scanner-section" style="display: none;">
+            <h3 id="ponencia-activa-titulo"></h3>
+            <div id="qr-reader"></div>
+            
+            <div id="scan-message" class="message-box"></div>
+            <div id="merch-message" class="message-box"></div>
+            
+            <button id="stop-scan-btn">Detener Escáner y Cambiar Ponencia</button>
+        </div>
+    </div>
+
+    <script>
+        // --- ¡¡¡CONFIGURACIÓN IMPORTANTE!!! ---
+        // Pega aquí la MISMA URL de la aplicación web que copiaste en la Fase 2
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxdxPSSkYcLafO_q6xA_lx_485P6YOZKp1_qL55K3duIWjPAv1Os7iyTJvuv5Se7odH0A/exec'; 
+        // -------------------------------------
+
+        // --- Autenticación ---
+        const user = JSON.parse(localStorage.getItem('simposioUser'));
+        if (!user || user.rol !== 'admin') { // Si no es admin, fuera
+            localStorage.removeItem('simposioUser');
+            window.location.href = 'index.html'; 
+        }
+
+        // --- Elementos del DOM ---
+        const adminWelcome = document.getElementById('admin-welcome');
+        const logoutBtn = document.getElementById('logout-btn');
+        const ponenciaSelect = document.getElementById('ponencia-select');
+        const startScanBtn = document.getElementById('start-scan-btn');
+        const stopScanBtn = document.getElementById('stop-scan-btn');
+        const selectorSection = document.getElementById('selector-ponencia');
+        const scannerSection = document.getElementById('scanner-section');
+        const ponenciaActivaTitulo = document.getElementById('ponencia-activa-titulo');
+        const qrReaderDiv = document.getElementById('qr-reader');
+        const scanMessage = document.getElementById('scan-message');
+        const merchMessage = document.getElementById('merch-message'); 
+        
+        let ponenciaSeleccionada = null; 
+        const html5QrCode = new Html5Qrcode("qr-reader");
+        let isScannerPaused = false;
+
+        // --- Cargar Ponencias al inicio ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            adminWelcome.textContent = `Bienvenido, ${user.nombre_completo}`;
+            
+            const url = `${API_URL}?action=getPonencias`;
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.success) {
+                    ponenciaSelect.innerHTML = '<option value="">-- Selecciona una --</option>';
+                    data.ponencias.forEach(p => {
+                        ponenciaSelect.innerHTML += `<option value="${p.id}">${p.nombre}</option>`;
+                    });
+                } else {
+                    ponenciaSelect.innerHTML = `<option value="">Error al cargar</option>`;
+                }
+            } catch (error) {
+                ponenciaSelect.innerHTML = `<option value="">Error de conexión</option>`;
+            }
+        });
+
+        // --- Iniciar Escáner ---
+        startScanBtn.addEventListener('click', () => {
+            ponenciaSeleccionada = ponenciaSelect.value;
+            if (!ponenciaSeleccionada) {
+                alert('Por favor, selecciona una ponencia primero.');
+                return;
+            }
+            
+            // Ocultamos selector, mostramos escáner
+            selectorSection.style.display = 'none';
+            scannerSection.style.display = 'block';
+            stopScanBtn.style.display = 'block';
+            ponenciaActivaTitulo.textContent = `Registrando para: ${ponenciaSelect.options[ponenciaSelect.selectedIndex].text}`;
+            startScanner();
+        });
+
+        function startScanner() {
+            qrReaderDiv.style.display = 'block';
+            scanMessage.style.display = 'block';
+            merchMessage.style.display = 'none';
+            scanMessage.textContent = 'Apuntando cámara al QR del asistente...';
+            scanMessage.className = 'message-box';
+            isScannerPaused = false;
+
+            html5QrCode.start(
+                { facingMode: "environment" }, // Pedir cámara trasera
+                { fps: 5, qrbox: 250 },      // Configuración
+                onScanSuccess,                // Función si tiene éxito
+                onScanError                   // Función si hay error (opcional)
+            ).catch(err => {
+                scanMessage.textContent = `Error al iniciar la cámara: ${err}`;
+                scanMessage.className = 'message-box msg-error';
+            });
+        }
+
+        // --- Detener Escáner ---
+        stopScanBtn.addEventListener('click', () => {
+            if (isScannerPaused) {
+                resumeScanner();
+                return;
+            }
+            html5QrCode.stop().then(() => {
+                scannerSection.style.display = 'none';
+                stopScanBtn.style.display = 'none';
+                selectorSection.style.display = 'block';
+                ponenciaSeleccionada = null;
+                scanMessage.style.display = 'none';
+                merchMessage.style.display = 'none';
+            }).catch(err => console.error(err));
+        });
+
+        // --- Éxito al Escanear ---
+        function onScanSuccess(usuario_qr, decodedResult) {
+            if (isScannerPaused) return; // No hacer nada si ya estamos procesando un QR
+            
+            isScannerPaused = true; // Pausamos
+            scanMessage.textContent = `QR detectado: ${usuario_qr}. Registrando...`;
+            scanMessage.className = 'message-box';
+            merchMessage.style.display = 'none';
+
+            registrarAsistencia(usuario_qr, ponenciaSeleccionada);
+        }
+
+        function onScanError(errorMessage) { /* Ignorar errores */ }
+
+        // --- Registrar Asistencia (POST) ---
+        async function registrarAsistencia(usuario_qr, id_ponencia) {
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'registrar',
+                        usuario_qr: usuario_qr,
+                        id_ponencia_seleccionada: id_ponencia
+                    })
+                });
+                const data = await response.json();
+
+                // Mostramos el mensaje de registro
+                scanMessage.textContent = data.message;
+                scanMessage.className = data.success ? 'message-box msg-success' : 'message-box msg-error';
+                
+                // Y AHORA MOSTRAMOS EL MENSAJE DE MERCH
+                if (data.merch_status) {
+                    merchMessage.textContent = data.merch_status;
+                    merchMessage.style.display = 'block';
+                    
+                    if (data.merch_status.includes('AHORA')) {
+                        merchMessage.className = 'message-box msg-merch-pendiente'; // ¡Mensaje especial!
+                    } else {
+                        merchMessage.className = 'message-box msg-merch-ok';
+                    }
+                }
+
+            } catch (error) {
+                scanMessage.textContent = 'Error de conexión al registrar.';
+                scanMessage.className = 'message-box msg-error';
+            }
+
+            // Después de 3 segundos, reactivamos
+            setTimeout(() => {
+                resumeScanner();
+            }, 3000); // 3 segundos para que el encargado lea el mensaje
+        }
+
+        function resumeScanner() {
+            scanMessage.textContent = 'Listo para el siguiente...';
+            scanMessage.className = 'message-box';
+            merchMessage.style.display = 'none'; // Ocultamos merch
+            isScannerPaused = false;
+        }
+
+        // --- Cerrar Sesión (Admin) ---
+        logoutBtn.addEventListener('click', () => {
+            localStorage.removeItem('simposioUser');
+            window.location.href = 'index.html';
+        });
+
+    </script>
+</body>
+</html>
