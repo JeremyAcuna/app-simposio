@@ -70,13 +70,12 @@
 
     <script>
         // --- ¡¡¡CONFIGURACIÓN IMPORTANTE!!! ---
-        // Pega aquí la MISMA URL de la aplicación web que copiaste en la Fase 2
-        const API_URL = 'https://script.google.com/macros/s/AKfycbxdxPSSkYcLafO_q6xA_lx_485P6YOZKp1_qL55K3duIWjPAv1Os7iyTJvuv5Se7odH0A/exec'; 
+        const API_URL = 'Pega aquí tu URL de implementación'; // <--- PEGA TU URL AQUÍ
         // -------------------------------------
 
         // --- Autenticación ---
         const user = JSON.parse(localStorage.getItem('simposioUser'));
-        if (!user || user.rol !== 'admin') { // Si no es admin, fuera
+        if (!user || user.rol !== 'admin') { 
             localStorage.removeItem('simposioUser');
             window.location.href = 'index.html'; 
         }
@@ -101,7 +100,6 @@
         // --- Cargar Ponencias al inicio ---
         document.addEventListener('DOMContentLoaded', async () => {
             adminWelcome.textContent = `Bienvenido, ${user.nombre_completo}`;
-            
             const url = `${API_URL}?action=getPonencias`;
             try {
                 const response = await fetch(url);
@@ -126,8 +124,6 @@
                 alert('Por favor, selecciona una ponencia primero.');
                 return;
             }
-            
-            // Ocultamos selector, mostramos escáner
             selectorSection.style.display = 'none';
             scannerSection.style.display = 'block';
             stopScanBtn.style.display = 'block';
@@ -142,12 +138,9 @@
             scanMessage.textContent = 'Apuntando cámara al QR del asistente...';
             scanMessage.className = 'message-box';
             isScannerPaused = false;
-
             html5QrCode.start(
-                { facingMode: "environment" }, // Pedir cámara trasera
-                { fps: 5, qrbox: 250 },      // Configuración
-                onScanSuccess,                // Función si tiene éxito
-                onScanError                   // Función si hay error (opcional)
+                { facingMode: "environment" }, { fps: 5, qrbox: 250 },
+                onScanSuccess, onScanError
             ).catch(err => {
                 scanMessage.textContent = `Error al iniciar la cámara: ${err}`;
                 scanMessage.className = 'message-box msg-error';
@@ -156,10 +149,7 @@
 
         // --- Detener Escáner ---
         stopScanBtn.addEventListener('click', () => {
-            if (isScannerPaused) {
-                resumeScanner();
-                return;
-            }
+            if (isScannerPaused) { resumeScanner(); return; }
             html5QrCode.stop().then(() => {
                 scannerSection.style.display = 'none';
                 stopScanBtn.style.display = 'none';
@@ -172,49 +162,47 @@
 
         // --- Éxito al Escanear ---
         function onScanSuccess(usuario_qr, decodedResult) {
-            if (isScannerPaused) return; // No hacer nada si ya estamos procesando un QR
-            
-            isScannerPaused = true; // Pausamos
+            if (isScannerPaused) return; 
+            isScannerPaused = true; 
             scanMessage.textContent = `QR detectado: ${usuario_qr}. Registrando...`;
             scanMessage.className = 'message-box';
             merchMessage.style.display = 'none';
-
             registrarAsistencia(usuario_qr, ponenciaSeleccionada);
         }
 
         function onScanError(errorMessage) { /* Ignorar errores */ }
 
-        // --- Registrar Asistencia (POST) ---
+        // --- Registrar Asistencia (POST - ¡AQUÍ ESTÁ EL CAMBIO!) ---
         async function registrarAsistencia(usuario_qr, id_ponencia) {
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    // ¡¡NO HAY 'HEADERS'!! Esta línea fue eliminada
                     body: JSON.stringify({
                         action: 'registrar',
                         usuario_qr: usuario_qr,
                         id_ponencia_seleccionada: id_ponencia
                     })
                 });
+                
+                // Si el código llega aquí, la conexión POST funcionó
                 const data = await response.json();
 
-                // Mostramos el mensaje de registro
                 scanMessage.textContent = data.message;
                 scanMessage.className = data.success ? 'message-box msg-success' : 'message-box msg-error';
                 
-                // Y AHORA MOSTRAMOS EL MENSAJE DE MERCH
                 if (data.merch_status) {
                     merchMessage.textContent = data.merch_status;
                     merchMessage.style.display = 'block';
-                    
                     if (data.merch_status.includes('AHORA')) {
-                        merchMessage.className = 'message-box msg-merch-pendiente'; // ¡Mensaje especial!
+                        merchMessage.className = 'message-box msg-merch-pendiente';
                     } else {
                         merchMessage.className = 'message-box msg-merch-ok';
                     }
                 }
 
             } catch (error) {
+                // Si aún da "Error de conexión", el problema es otro.
                 scanMessage.textContent = 'Error de conexión al registrar.';
                 scanMessage.className = 'message-box msg-error';
             }
@@ -222,13 +210,13 @@
             // Después de 3 segundos, reactivamos
             setTimeout(() => {
                 resumeScanner();
-            }, 3000); // 3 segundos para que el encargado lea el mensaje
+            }, 3000); 
         }
 
         function resumeScanner() {
             scanMessage.textContent = 'Listo para el siguiente...';
             scanMessage.className = 'message-box';
-            merchMessage.style.display = 'none'; // Ocultamos merch
+            merchMessage.style.display = 'none'; 
             isScannerPaused = false;
         }
 
@@ -240,6 +228,4 @@
 
     </script>
 </body>
-
 </html>
-
