@@ -172,6 +172,7 @@
 
         // --- Éxito al Escanear ---
         function onScanSuccess(usuario_qr, decodedResult) {
+            usuario_qr = "ana.humpiri";
             if (isScannerPaused) return; // No hacer nada si ya estamos procesando un QR
             
             isScannerPaused = true; // Pausamos
@@ -240,4 +241,5 @@
 
     </script>
 </body>
+
 </html>
